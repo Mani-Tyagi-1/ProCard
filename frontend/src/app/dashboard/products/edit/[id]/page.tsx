@@ -1,13 +1,15 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { ArrowLeft, Upload, Save, X, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 
-export default function AddProductPage() {
+export default function EditProductPage() {
   const router = useRouter();
+  const params = useParams();
+  const id = params.id as string;
   
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -15,12 +17,38 @@ export default function AddProductPage() {
   const [stock, setStock] = useState("");
   const [status, setStatus] = useState("active");
   
+  const [existingImages, setExistingImages] = useState<string[]>([]);
   const [files, setFiles] = useState<File[]>([]);
   const [previewUrls, setPreviewUrls] = useState<string[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  const [isFetching, setIsFetching] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchProduct = async () => {
+      try {
+        const res = await fetch(`http://localhost:5000/api/products/${id}`);
+        if (!res.ok) throw new Error("Failed to fetch product");
+        const product = await res.json();
+        
+        setTitle(product.title);
+        setDescription(product.description);
+        setPrice(product.price.toString());
+        setStock(product.stock.toString());
+        setStatus(product.isPublished ? "active" : "draft");
+        setExistingImages(product.images || []);
+      } catch (err: any) {
+        console.error(err);
+        setError("Could not load product. It may have been deleted.");
+      } finally {
+        setIsFetching(false);
+      }
+    };
+    
+    if (id) fetchProduct();
+  }, [id]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
@@ -32,10 +60,13 @@ export default function AddProductPage() {
     }
   };
 
-  const removeFile = (index: number) => {
+  const removeExistingImage = (index: number) => {
+    setExistingImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const removeNewFile = (index: number) => {
     setFiles((prev) => prev.filter((_, i) => i !== index));
     setPreviewUrls((prev) => {
-      // Revoke the object URL to avoid memory leaks
       URL.revokeObjectURL(prev[index]);
       return prev.filter((_, i) => i !== index);
     });
@@ -51,9 +82,9 @@ export default function AddProductPage() {
         throw new Error("Please fill in all required fields.");
       }
 
-      let imageUrls: string[] = [];
+      let newImageUrls: string[] = [];
 
-      // 1. Upload Images
+      // 1. Upload new Images
       if (files.length > 0) {
         const formData = new FormData();
         files.forEach((file) => {
@@ -71,22 +102,23 @@ export default function AddProductPage() {
         }
 
         const uploadData = await uploadRes.json();
-        // Cloudinary returns absolute URLs (secure_url)
-        imageUrls = uploadData.imageUrls;
+        newImageUrls = uploadData.imageUrls;
       }
 
-      // 2. Create Product
+      const finalImages = [...existingImages, ...newImageUrls];
+
+      // 2. Update Product
       const productData = {
         title,
         description,
         price: Number(price),
         stock: Number(stock),
         status,
-        images: imageUrls,
+        images: finalImages,
       };
 
-      const productRes = await fetch("http://localhost:5000/api/products", {
-        method: "POST",
+      const productRes = await fetch(`http://localhost:5000/api/products/${id}`, {
+        method: "PUT",
         headers: {
           "Content-Type": "application/json",
         },
@@ -95,7 +127,7 @@ export default function AddProductPage() {
 
       if (!productRes.ok) {
         const errData = await productRes.json();
-        throw new Error(errData.message || "Failed to create product");
+        throw new Error(errData.message || "Failed to update product");
       }
 
       // 3. Success, redirect back to products
@@ -110,6 +142,14 @@ export default function AddProductPage() {
     }
   };
 
+  if (isFetching) {
+    return (
+      <div className="flex h-[400px] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 max-w-5xl pb-10">
       <div className="flex items-center gap-4">
@@ -120,9 +160,9 @@ export default function AddProductPage() {
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Add New Product</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-foreground">Edit Product</h1>
           <p className="text-muted-foreground mt-1">
-            Create a new product listing for your store.
+            Update your product listing details.
           </p>
         </div>
       </div>
@@ -250,21 +290,37 @@ export default function AddProductPage() {
                 <p className="text-xs text-muted-foreground">SVG, PNG, JPG or GIF (max. 5MB)</p>
               </div>
 
-              {/* Previews */}
+              {/* Previews of Existing & New Images */}
               <AnimatePresence>
-                {previewUrls.length > 0 && (
+                {(existingImages.length > 0 || previewUrls.length > 0) && (
                   <motion.div 
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
                     className="mt-4 grid grid-cols-2 gap-3"
                   >
-                    {previewUrls.map((url, idx) => (
-                      <div key={url} className="relative group rounded-lg overflow-hidden border border-border/50 bg-background aspect-square">
-                        <img src={url} alt={`Preview ${idx}`} className="object-cover w-full h-full" />
+                    {/* Existing Images */}
+                    {existingImages.map((url, idx) => (
+                      <div key={`existing-${idx}`} className="relative group rounded-lg overflow-hidden border border-border/50 bg-background aspect-square">
+                        <img src={url} alt={`Existing Preview ${idx}`} className="object-cover w-full h-full" />
                         <button
                           type="button"
-                          onClick={(e) => { e.stopPropagation(); removeFile(idx); }}
+                          onClick={(e) => { e.stopPropagation(); removeExistingImage(idx); }}
+                          className="absolute top-1 right-1 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+
+                    {/* New Images */}
+                    {previewUrls.map((url, idx) => (
+                      <div key={`new-${idx}`} className="relative group rounded-lg overflow-hidden border border-border/50 bg-background aspect-square">
+                        <img src={url} alt={`New Preview ${idx}`} className="object-cover w-full h-full border-2 border-primary" />
+                        <span className="absolute bottom-1 left-1 bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded font-medium">New</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); removeNewFile(idx); }}
                           className="absolute top-1 right-1 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive"
                         >
                           <X className="h-3 w-3" />
@@ -327,7 +383,7 @@ export default function AddProductPage() {
             ) : (
               <Save className="h-4 w-4" />
             )}
-            {isLoading ? "Saving..." : "Save Product"}
+            {isLoading ? "Updating..." : "Update Product"}
           </button>
         </motion.div>
       </form>
