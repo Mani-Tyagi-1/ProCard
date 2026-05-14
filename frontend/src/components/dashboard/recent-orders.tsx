@@ -2,23 +2,73 @@
 
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 
-const orders = [
-  { id: "ORD-001", customer: "John Doe", product: "Premium Sneakers", total: "$129.00", status: "Delivered", date: "Today" },
-  { id: "ORD-002", customer: "Jane Smith", product: "Wireless Earbuds", total: "$89.99", status: "Processing", date: "Yesterday" },
-  { id: "ORD-003", customer: "Michael Johnson", product: "Smart Watch", total: "$199.50", status: "Shipped", date: "Oct 24" },
-  { id: "ORD-004", customer: "Emily Davis", product: "Leather Wallet", total: "$45.00", status: "Delivered", date: "Oct 23" },
-  { id: "ORD-005", customer: "Chris Wilson", product: "Mechanical Keyboard", total: "$150.00", status: "Pending", date: "Oct 22" },
-];
+interface Order {
+  _id: string;
+  productId: {
+    _id: string;
+    title: string;
+    images: string[];
+    price: number;
+  };
+  buyerDetails: {
+    fullName: string;
+    phone: string;
+  };
+  totalAmount: number;
+  status: string;
+  createdAt: string;
+}
 
-const statusStyles = {
+const statusStyles: Record<string, string> = {
   Delivered: "bg-emerald-500/10 text-emerald-500",
   Processing: "bg-blue-500/10 text-blue-500",
   Shipped: "bg-purple-500/10 text-purple-500",
   Pending: "bg-amber-500/10 text-amber-500",
+  Cancelled: "bg-destructive/10 text-destructive",
+  Refunded: "bg-muted text-muted-foreground",
 };
 
 export function RecentOrders() {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const fetchOrders = async () => {
+      try {
+        const res = await fetch("http://localhost:5000/api/orders");
+        if (!res.ok) throw new Error("Failed to fetch orders");
+        const data = await res.json();
+        setOrders(data);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchOrders();
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-border/50 bg-card shadow-sm p-12 flex justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-destructive/20 bg-destructive/10 text-destructive p-6 shadow-sm">
+        {error}
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-border/50 bg-card shadow-sm overflow-hidden">
       <div className="p-6 border-b border-border/50">
@@ -36,35 +86,47 @@ export function RecentOrders() {
             </tr>
           </thead>
           <tbody className="divide-y divide-border/50">
-            {orders.map((order, i) => (
+            {orders.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
+                  No orders found.
+                </td>
+              </tr>
+            ) : orders.map((order, i) => (
               <motion.tr
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.3, delay: i * 0.1 }}
-                key={order.id}
+                transition={{ duration: 0.3, delay: i * 0.05 }}
+                key={order._id}
                 className="hover:bg-muted/30 transition-colors"
               >
                 <td className="px-6 py-4 font-medium text-foreground whitespace-nowrap">
-                  {order.id}
+                  ORD-{order._id.substring(order._id.length - 6).toUpperCase()}
                 </td>
                 <td className="px-6 py-4 text-muted-foreground">
-                  {order.customer}
+                  <div className="font-medium text-foreground">{order.buyerDetails.fullName}</div>
+                  <div className="text-xs">{order.buyerDetails.phone}</div>
                 </td>
                 <td className="px-6 py-4 text-muted-foreground">
-                  {order.product}
+                  <div className="flex items-center gap-3">
+                    {order.productId?.images?.[0] && (
+                      <img src={order.productId.images[0]} alt="" className="w-8 h-8 rounded object-cover border border-border/50 shrink-0" />
+                    )}
+                    <span className="line-clamp-1">{order.productId?.title || 'Unknown Product'}</span>
+                  </div>
                 </td>
                 <td className="px-6 py-4">
                   <span
                     className={cn(
-                      "px-2.5 py-1 rounded-full text-xs font-medium",
-                      statusStyles[order.status as keyof typeof statusStyles]
+                      "px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap",
+                      statusStyles[order.status] || "bg-muted text-muted-foreground"
                     )}
                   >
                     {order.status}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-right font-medium text-foreground">
-                  {order.total}
+                <td className="px-6 py-4 text-right font-medium text-foreground whitespace-nowrap">
+                  ${order.totalAmount.toFixed(2)}
                 </td>
               </motion.tr>
             ))}

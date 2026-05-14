@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Edit, Trash2, Loader2, Package, Eye, X } from "lucide-react";
+import { Plus, Edit, Trash2, Loader2, Package, Eye, X, Share2, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 
@@ -18,6 +18,7 @@ interface Product {
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -52,6 +53,17 @@ export default function ProductsPage() {
     } catch (err: any) {
       console.error(err);
       alert(err.message);
+    }
+  };
+
+  const handleShare = async (id: string) => {
+    const shareUrl = `${window.location.origin}/p/${id}`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setIsCopied(true);
+      setTimeout(() => setIsCopied(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy link", err);
     }
   };
 
@@ -232,6 +244,13 @@ export default function ProductsPage() {
                     className="flex-1 px-4 py-2.5 rounded-xl font-medium border border-border/50 hover:bg-muted transition-colors"
                   >
                     Close
+                  </button>
+                  <button 
+                    onClick={() => handleShare(selectedProduct._id)}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-secondary text-secondary-foreground rounded-xl font-medium hover:bg-secondary/80 transition-colors"
+                  >
+                    {isCopied ? <Check className="h-4 w-4" /> : <Share2 className="h-4 w-4" />}
+                    {isCopied ? "Copied!" : "Share Link"}
                   </button>
                   <button className="flex-1 px-4 py-2.5 bg-primary text-primary-foreground rounded-xl font-medium hover:bg-primary/90 transition-colors shadow-sm" onClick={() => alert("Mock Buy Action")}>
                     Buy Now
